@@ -7,15 +7,30 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useState, useRef, useEffect } from "react";
+
 // Map
 import MapView, { Marker } from "react-native-maps";
 import * as Location from "expo-location";
+
 // Image picker
 import * as ImagePicker from "expo-image-picker";
+
 // Firebase
 import { app, database, storage } from "./firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, getDocs } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+
 // Notifikationer
 import { Vibration } from "react-native";
 import * as Notifications from "expo-notifications";
@@ -32,6 +47,7 @@ Notifications.setNotificationHandler({
 
 export default function App() {
   const [markers, setMarkers] = useState([]);
+  const [selectedMarker, setSelectedMarker] = useState(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [region, setRegion] = useState({
@@ -160,7 +176,42 @@ export default function App() {
     }
   }
 
+  async function deleteMarker(marker) {
+    try {
+      // Delete image from Firebase Storage
+      const imageRef = ref(storage, marker.imageUrl);
+      await deleteObject(imageRef);
+
+      // Delete marker from Firestore
+      const markerRef = doc(database, "markers", marker.key);
+      await deleteDoc(markerRef);
+
+      // Remove marker from local state
+      setMarkers((prevMarkers) =>
+        prevMarkers.filter((m) => m.key !== marker.key)
+      );
+
+      // Close the modal
+      setModalVisible(false);
+
+      // Vibration feedback on deletion
+      Vibration.vibrate(100);
+
+      // Send notification
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Markør slettet",
+          body: "Valgt markør er blevet slettet fra kortet!",
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      console.error("Error deleting marker: ", error);
+    }
+  }
+
   function onMarkerPress(marker) {
+    setSelectedMarker(marker);
     setSelectedImageUrl(marker.imageUrl);
     setModalVisible(true);
 
@@ -198,6 +249,12 @@ export default function App() {
               style={styles.modalImage}
             />
           )}
+          <TouchableOpacity
+            style={styles.modalDeleteButton}
+            onPress={() => deleteMarker(selectedMarker)}
+          >
+            <Text style={styles.modalDeleteText}>Delete</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </View>
@@ -229,5 +286,16 @@ const styles = StyleSheet.create({
   },
   modalCloseText: {
     color: "#000",
+  },
+  modalDeleteButton: {
+    position: "absolute",
+    bottom: 50,
+    padding: 10,
+    backgroundColor: "#ff4d4d",
+    borderRadius: 20,
+  },
+  modalDeleteText: {
+    color: "#fff",
+    fontWeight: "bold",
   },
 });
