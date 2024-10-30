@@ -7,12 +7,28 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useState, useRef, useEffect } from "react";
+// Map
 import MapView, { Marker } from "react-native-maps";
 import * as Location from "expo-location";
+// Image picker
 import * as ImagePicker from "expo-image-picker";
+// Firebase
 import { app, database, storage } from "./firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, getDocs } from "firebase/firestore";
+// Notifikationer
+import { Vibration } from "react-native";
+import * as Notifications from "expo-notifications";
+import Toast from "react-native-toast-message";
+
+// Sætter notifications handler til at vise en alert og spille en lyd
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function App() {
   const [markers, setMarkers] = useState([]);
@@ -68,8 +84,24 @@ export default function App() {
 
     fetchMarkers();
 
+    // Lyt til notifikationer i forgrunden
+    const foregroundSubscription =
+      Notifications.addNotificationReceivedListener((notification) => {
+        // Tjek objekt om der er blevet modtaget en notifikation
+        // console.log("Notifikation modtaget i forgrund:", notification);
+
+        // Vis en toast-besked
+        Toast.show({
+          type: "success",
+          text1: notification.request.content.title,
+          text2: notification.request.content.body,
+        });
+      });
+
     return () => {
       if (locationSubscription.current) locationSubscription.current.remove();
+      // Rens op når komponenten unmountes
+      foregroundSubscription.remove();
     };
   }, []);
 
@@ -110,6 +142,18 @@ export default function App() {
             imageUrl: downloadURL,
           },
         ]);
+
+        // Vibration feedback when a new marker is added for 100 ms
+        Vibration.vibrate(100);
+
+        // Send notification
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Ny markør tilføjet",
+            body: "En ny markør er blevet oprettet på kortet!",
+          },
+          trigger: null,
+        });
       }
     } catch (error) {
       console.error("Error adding marker: ", error);
@@ -119,6 +163,9 @@ export default function App() {
   function onMarkerPress(marker) {
     setSelectedImageUrl(marker.imageUrl);
     setModalVisible(true);
+
+    // Vibrate when marker modal opens
+    Vibration.vibrate(50);
   }
 
   return (
@@ -132,6 +179,8 @@ export default function App() {
           />
         ))}
       </MapView>
+
+      <Toast />
 
       {/* Modal view for images */}
 
